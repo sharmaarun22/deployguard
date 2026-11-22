@@ -37,16 +37,38 @@ def test_pipeline_analysis_execution_and_pagination(client: TestClient) -> None:
         json={
             "pipeline_id": pipeline_id,
             "status": "failure",
+            "external_id": "run-1",
             "log_text": "AssertionError: expected success",
         },
     )
     assert execution.status_code == 200
     assert execution.json()["classification"]["category"] == "test-assertion"
+    assert execution.json()["duplicate"] is False
+
+    duplicate = client.post(
+        "/api/pipelines/executions",
+        json={
+            "pipeline_id": pipeline_id,
+            "status": "success",
+            "external_id": "run-1",
+        },
+    )
+    assert duplicate.json()["duplicate"] is True
+    assert duplicate.json()["execution_id"] == execution.json()["execution_id"]
+
+    next_execution = client.post(
+        "/api/pipelines/executions",
+        json={"pipeline_id": pipeline_id, "status": "success", "external_id": "run-2"},
+    )
+    assert next_execution.status_code == 200
+    history = client.get(f"/api/pipelines/{pipeline_id}/executions")
+    assert history.json()["total"] == 2
 
     listing = client.get("/api/pipelines?page=1&page_size=1")
     assert listing.status_code == 200
     assert listing.json()["total"] == 1
     assert listing.json()["items"][0]["id"] == pipeline_id
+    assert listing.json()["items"][0]["status"] == "success"
 
 
 def test_invalid_pipeline_and_unknown_execution_errors(client: TestClient) -> None:
@@ -61,6 +83,29 @@ def test_invalid_pipeline_and_unknown_execution_errors(client: TestClient) -> No
         json={"pipeline_id": 404, "status": "failure"},
     )
     assert missing.status_code == 404
+
+
+def test_execution_preserves_workflow_findings(client: TestClient) -> None:
+    source = """
+name: CI
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl https://example.com/script.sh | bash
+"""
+    analyzed = client.post(
+        "/api/pipelines/analyze",
+        json={"name": "unsafe-workflow", "source": source},
+    )
+    assert any(item["rule"] == "unsafe-shell-pipe" for item in analyzed.json()["findings"])
+
+    client.post(
+        "/api/pipelines/executions",
+        json={"pipeline_id": analyzed.json()["id"], "status": "failure"},
+    )
+    stored = client.get("/api/pipelines").json()["items"][0]
+    assert any(item["rule"] == "unsafe-shell-pipe" for item in stored["findings"])
 
 
 def test_junit_ingestion_updates_analytics_and_dashboard(client: TestClient) -> None:
@@ -93,6 +138,13 @@ resource "aws_s3_bucket" "public" {
     risk = client.post("/api/deployments/risk", json={"pipeline_failures": 1})
     assert risk.status_code == 200
     assert risk.json()["score"] > 0
+    assert risk.json()["classification"] == "insufficient_data"
+
+    invalid_weights = client.post(
+        "/api/deployments/risk",
+        json={"pipeline_failures": 1, "weights": {"pipeline_failures": -1}},
+    )
+    assert invalid_weights.status_code == 422
 
 
 def test_api_key_protects_notification_rule_mutations(client: TestClient, monkeypatch) -> None:
@@ -113,7 +165,7 @@ def test_api_key_protects_notification_rule_mutations(client: TestClient, monkey
 
     created = client.post(
         "/api/notifications/rules",
-        json={**rule, "webhook_url": "https://hooks.example.test/deployguard"},
+        json={**rule, "webhook_url": "https://hooks.example.com/deployguard"},
         headers=headers,
     )
     assert created.status_code == 200

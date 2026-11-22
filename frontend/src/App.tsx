@@ -6,7 +6,7 @@ type Dashboard = {
   test_reliability: {
     total_executions: number
     failed_executions: number
-    flaky_tests: Array<{ test_name: string; runs: number; pass_rate: number }>
+    flaky_tests: Array<{ suite?: string; test_name: string; runs: number; pass_rate: number }>
   }
   infrastructure_findings: number
   recent_pipelines: Array<{ id: number; name: string; status: string }>
@@ -96,7 +96,7 @@ function App() {
                 <p className="empty">No flaky tests detected.</p>
               ) : (
                 dashboard.test_reliability.flaky_tests.map((test) => (
-                  <div className="row" key={test.test_name}>
+                  <div className="row" key={`${test.suite ?? ''}:${test.test_name}`}>
                     <span>{test.test_name}</span>
                     <b>{Math.round(test.pass_rate * 100)}% pass</b>
                   </div>

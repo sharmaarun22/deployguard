@@ -1,31 +1,33 @@
-from __future__ import annotations
-
-import asyncio
-from urllib.parse import urlparse
-
-import httpx
+import ipaddress
+from urllib.parse import urlsplit
 
 
 def validate_webhook_url(url: str) -> str:
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        raise ValueError("Webhook URL must use HTTP or HTTPS")
-    if parsed.hostname in {"localhost", "127.0.0.1", "::1"}:
-        raise ValueError("Local webhook targets are not allowed")
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError("Webhook URL must use HTTPS and include a hostname")
+    if parsed.username or parsed.password or parsed.fragment:
+        raise ValueError("Webhook URL must not include credentials or a fragment")
+    hostname = parsed.hostname.rstrip(".").lower()
+    if hostname in {"localhost", "metadata.google.internal"} or hostname.endswith(
+        (".localhost", ".local", ".internal", ".test", ".invalid")
+    ):
+        raise ValueError("Local and reserved webhook targets are not allowed")
+
+    try:
+        address = ipaddress.ip_address(hostname)
+    except ValueError as exc:
+        if "." not in hostname:
+            raise ValueError(
+                "Webhook hostname must be a public fully qualified domain name"
+            ) from exc
+    else:
+        if not address.is_global:
+            raise ValueError("Private and non-global webhook IP addresses are not allowed")
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("Webhook URL contains an invalid port") from exc
+    if port == 0:
+        raise ValueError("Webhook URL port must be greater than zero")
     return url
-
-
-async def send_webhook(url: str, payload: dict[str, object], attempts: int = 3) -> bool:
-    validate_webhook_url(url)
-    timeout = httpx.Timeout(5.0, connect=2.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-        for attempt in range(attempts):
-            try:
-                response = await client.post(url, json=payload)
-                if response.is_success:
-                    return True
-            except httpx.HTTPError:
-                pass
-            if attempt < attempts - 1:
-                await asyncio.sleep(0.25 * (2**attempt))
-    return False

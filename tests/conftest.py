@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app import main
 from backend.app.config import settings
-from backend.app.db import get_db
+from backend.app.db import Base, get_db
 
 
 @pytest.fixture
@@ -15,8 +15,8 @@ def client(tmp_path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, N
     database_url = f"sqlite:///{tmp_path / 'test.db'}"
     test_engine = create_engine(database_url, connect_args={"check_same_thread": False})
     test_session = sessionmaker(bind=test_engine, expire_on_commit=False)
-    monkeypatch.setattr(main, "engine", test_engine)
     monkeypatch.setattr(settings, "api_key", None)
+    Base.metadata.create_all(bind=test_engine)
 
     def override_get_db() -> Generator[Session, None, None]:
         with test_session() as session:

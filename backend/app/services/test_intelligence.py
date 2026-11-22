@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import math
 from collections import defaultdict
+from collections.abc import Mapping, Sequence
 from typing import TypedDict
 from xml.etree import ElementTree
 
@@ -11,6 +13,16 @@ class ParsedTestRecord(TypedDict):
     status: str
     duration_ms: float
     failure_message: str | None
+
+
+def _duration_ms(value: str | None) -> float:
+    try:
+        duration_ms = float(value or 0) * 1000
+    except ValueError as exc:
+        raise ValueError("Test duration must be numeric") from exc
+    if not math.isfinite(duration_ms) or duration_ms < 0:
+        raise ValueError("Test duration must be finite and non-negative")
+    return duration_ms
 
 
 def parse_junit_xml(xml_text: str) -> list[ParsedTestRecord]:
@@ -33,7 +45,7 @@ def parse_junit_xml(xml_text: str) -> list[ParsedTestRecord]:
                 "suite": case.get("classname") or (root.get("name") or "unknown"),
                 "test_name": case.get("name") or "unknown",
                 "status": status,
-                "duration_ms": float(case.get("time", "0") or 0) * 1000,
+                "duration_ms": _duration_ms(case.get("time")),
                 "failure_message": message,
             }
         )
@@ -53,14 +65,18 @@ def parse_robot_xml(xml_text: str) -> list[ParsedTestRecord]:
             status_text = status_node.get("status") or status_node.text or "FAIL"
         status_text = status_text.upper()
         status = "passed" if status_text == "PASS" else "failed"
-        elapsed = float(status_node.get("elapsed", "0") or 0) if status_node is not None else 0
+        duration_ms = (
+            _duration_ms(status_node.get("elapsed"))
+            if status_node is not None
+            else 0.0
+        )
         message_node = test.find(".//status/msg")
         records.append(
             {
                 "suite": "robot",
                 "test_name": name,
                 "status": status,
-                "duration_ms": elapsed * 1000,
+                "duration_ms": duration_ms,
                 "failure_message": message_node.text if message_node is not None else None,
             }
         )
@@ -70,13 +86,18 @@ def parse_robot_xml(xml_text: str) -> list[ParsedTestRecord]:
 
 
 def flaky_scores(
-    records: list[dict[str, object]], minimum_runs: int = 3
+    records: Sequence[Mapping[str, object]], minimum_runs: int = 3
 ) -> list[dict[str, object]]:
-    groups: dict[str, list[str]] = defaultdict(list)
+    if minimum_runs < 2:
+        raise ValueError("minimum_runs must be at least 2")
+    groups: dict[tuple[str, str], list[str]] = defaultdict(list)
     for record in records:
-        groups[str(record["test_name"])].append(str(record["status"]))
+        status = str(record["status"])
+        if status not in {"passed", "failed"}:
+            continue
+        groups[(str(record.get("suite", "unknown")), str(record["test_name"]))].append(status)
     scores: list[dict[str, object]] = []
-    for name, statuses in groups.items():
+    for (suite, name), statuses in groups.items():
         runs = len(statuses)
         if runs < minimum_runs:
             continue
@@ -85,9 +106,13 @@ def flaky_scores(
         if passed and failed:
             scores.append(
                 {
+                    "suite": suite,
                     "test_name": name,
                     "runs": runs,
+                    "passed": passed,
+                    "failed": failed,
                     "pass_rate": round(passed / runs, 3),
+                    "failure_rate": round(failed / runs, 3),
                     "flaky": True,
                     "score": round(failed * passed / (runs * runs), 3),
                 }
