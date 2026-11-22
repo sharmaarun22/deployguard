@@ -20,9 +20,9 @@ from backend.app.models import (
 from backend.app.schemas import (
     DeploymentRiskRequest,
     InfrastructureAnalyzeRequest,
+    NotificationRuleRequest,
     PipelineAnalyzeRequest,
     PipelineExecutionRequest,
-    NotificationRuleRequest,
     TestReportRequest,
 )
 from backend.app.services.classification import classify_failure
@@ -185,7 +185,10 @@ def test_analytics(
         for item in records
     ]
     flaky = flaky_scores(serializable)
-    slow = sorted(serializable, key=lambda item: item["duration_ms"], reverse=True)[:20]
+    slow = [
+        {"test_name": item.test_name, "status": item.status, "duration_ms": item.duration_ms}
+        for item in sorted(records, key=lambda item: item.duration_ms, reverse=True)[:20]
+    ]
     return {
         "total_executions": len(records),
         "flaky_tests": flaky,

@@ -63,8 +63,7 @@ def analyze_workflow(source: str) -> dict[str, Any]:
                                 "rule": "unsafe-shell-pipe",
                                 "severity": "high",
                                 "message": (
-                                    f"Job '{name}' step {index + 1} pipes "
-                                    "remote content into bash"
+                                    f"Job '{name}' step {index + 1} pipes remote content into bash"
                                 ),
                             }
                         )

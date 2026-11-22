@@ -23,7 +23,8 @@ docker compose up --build
 ```
 The dashboard is available at <http://127.0.0.1:5173>.
 
-Database migrations run automatically during the API container startup:
+Database migrations run automatically during API container startup. Seed the local database with
+synthetic demo data:
 
 ```powershell
 docker compose exec api alembic upgrade head
@@ -36,6 +37,8 @@ remains open. Send it as `X-API-Key` for protected mutations.
 ## API overview
 
 - `GET /health`
+- `GET /health/live`
+- `GET /health/ready`
 - `POST /api/pipelines/analyze`
 - `POST /api/pipelines/executions`
 - `GET /api/pipelines`
@@ -44,6 +47,8 @@ remains open. Send it as `X-API-Key` for protected mutations.
 - `POST /api/infrastructure/analyze`
 - `POST /api/deployments/risk`
 - `GET /api/dashboard`
+- `POST /api/notifications/rules`
+- `GET /api/notifications`
 
 ## Development
 
@@ -55,4 +60,11 @@ python scripts/populate_sample_data.py
 ```
 
 No AWS credentials or network services are required.
+
+The dashboard uses API data and displays an unavailable state if the API cannot be reached.
+Mutating routes accept an optional `DEPLOYGUARD_API_KEY`; configure it for shared or deployed
+environments. Role-based authorization and webhook event delivery are not implemented yet.
+
+See [Project Status](docs/PROJECT_STATUS.md) for verified functionality and limitations and
+[Engineering Backlog](docs/engineering-backlog/README.md) for clearly typed future tasks.
 

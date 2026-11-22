@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import TypedDict
 from xml.etree import ElementTree
 
 
-def parse_junit_xml(xml_text: str) -> list[dict[str, object]]:
+class ParsedTestRecord(TypedDict):
+    suite: str
+    test_name: str
+    status: str
+    duration_ms: float
+    failure_message: str | None
+
+
+def parse_junit_xml(xml_text: str) -> list[ParsedTestRecord]:
     root = ElementTree.fromstring(xml_text)
-    records: list[dict[str, object]] = []
+    records: list[ParsedTestRecord] = []
     for case in root.iter("testcase"):
         failure = case.find("failure")
         error = case.find("error")
@@ -33,17 +42,16 @@ def parse_junit_xml(xml_text: str) -> list[dict[str, object]]:
     return records
 
 
-def parse_robot_xml(xml_text: str) -> list[dict[str, object]]:
+def parse_robot_xml(xml_text: str) -> list[ParsedTestRecord]:
     root = ElementTree.fromstring(xml_text)
-    records: list[dict[str, object]] = []
+    records: list[ParsedTestRecord] = []
     for test in root.iter("test"):
         name = test.get("name") or "unknown"
         status_node = test.find(".//status")
-        status_text = (
-            status_node.get("status")
-            if status_node is not None and status_node.get("status")
-            else (status_node.text if status_node is not None and status_node.text else "FAIL")
-        ).upper()
+        status_text = "FAIL"
+        if status_node is not None:
+            status_text = status_node.get("status") or status_node.text or "FAIL"
+        status_text = status_text.upper()
         status = "passed" if status_text == "PASS" else "failed"
         elapsed = float(status_node.get("elapsed", "0") or 0) if status_node is not None else 0
         message_node = test.find(".//status/msg")
