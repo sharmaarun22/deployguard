@@ -1,0 +1,42 @@
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #dce7ef;
+  background: #081019;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; }
+main { max-width: 1180px; margin: 0 auto; padding: 38px 24px 64px; }
+.topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 28px; }
+.eyebrow { color: #75b7ff; letter-spacing: .18em; font-size: 12px; margin: 0 0 7px; }
+h1 { margin: 0; font-size: 32px; }
+.status { color: #91a2ae; font-size: 13px; }
+.status i { display:inline-block; width:8px; height:8px; border-radius:50%; background:#35c995; margin-right:7px; }
+.status i.offline { background:#ff8290; }
+.metrics { display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; }
+.metrics article, .panel { background:#101b25; border:1px solid #1d2b36; border-radius:10px; }
+.metrics article { padding:20px; min-height:140px; display:flex; flex-direction:column; }
+.metrics article span { color:#8396a5; font-size:11px; letter-spacing:.12em; }
+.metrics article strong { font-size:38px; margin:14px 0 6px; }
+.metrics article small { color:#78909f; }
+.content-grid { display:grid; grid-template-columns:1.25fr 1fr; gap:14px; margin-top:14px; }
+.panel { padding:20px; min-height:260px; }
+.panel h2 { margin:0 0 16px; font-size:17px; }
+.row { min-height:48px; display:flex; align-items:center; justify-content:space-between; border-top:1px solid #1b2933; gap:12px; }
+.row span { overflow:hidden; text-overflow:ellipsis; }
+.badge { border-radius:999px; padding:5px 9px; font-size:11px; text-transform:uppercase; background:#33404a; }
+.badge.success { background:#16372d; color:#63d9ad; }
+.badge.failure { background:#40252a; color:#ff8290; }
+.empty, .loading { color:#78909f; }
+.alert { background:#40252a; border:1px solid #74333d; color:#ffb1ba; border-radius:8px; padding:14px; }
+
+@media (max-width:800px) {
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  .content-grid { grid-template-columns:1fr; }
+}
+@media (max-width:480px) {
+  .metrics { grid-template-columns:1fr; }
+  .topbar { align-items:flex-start; }
+  h1 { font-size:26px; }
+}

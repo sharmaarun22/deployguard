@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="deployguard-sample" tests="3" failures="1" time="1.25">
+  <testcase classname="tests.test_api" name="test_health" time="0.12"/>
+  <testcase classname="tests.test_api" name="test_flaky_login" time="0.63">
+    <failure message="AssertionError: expected 200, got 503">assert response.status_code == 200</failure>
+  </testcase>
+  <testcase classname="tests.test_api" name="test_slow_report" time="0.50"/>
+</testsuite>

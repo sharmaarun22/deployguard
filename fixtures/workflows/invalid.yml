@@ -1,0 +1,5 @@
+name: Invalid Workflow
+jobs:
+  build:
+    steps:
+      - run: npm run build

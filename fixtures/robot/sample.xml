@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot>
+  <suite name="Synthetic Suite">
+    <test name="Login succeeds">
+      <status status="PASS" elapsed="0.42">Passed</status>
+    </test>
+  </suite>
+</robot>

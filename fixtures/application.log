@@ -1,0 +1,2 @@
+2026-11-21T15:00:00Z ERROR pipeline=ci worker=2 message="npm ci failed"
+2026-11-21T15:00:05Z ERROR pipeline=ci worker=2 message="authentication token rejected"
