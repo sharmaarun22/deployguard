@@ -1,3 +1,4 @@
+import math
 from typing import Any
 
 DEFAULT_WEIGHTS = {
@@ -13,26 +14,40 @@ DEFAULT_WEIGHTS = {
 def calculate_risk(
     values: dict[str, Any], weights: dict[str, float] | None = None
 ) -> dict[str, Any]:
+    overrides = weights or {}
+    unknown_weights = set(overrides) - set(DEFAULT_WEIGHTS)
+    if unknown_weights:
+        raise ValueError(f"Unknown risk weight(s): {', '.join(sorted(unknown_weights))}")
+    for key, weight in overrides.items():
+        if not math.isfinite(weight) or weight < 0:
+            raise ValueError(f"Risk weight '{key}' must be finite and non-negative")
+
     applied = {**DEFAULT_WEIGHTS, **(weights or {})}
     factors: list[dict[str, Any]] = []
     score = 0.0
+    missing_data: list[str] = []
 
     for key, weight in applied.items():
-        value = values.get(key, False)
+        value = values.get(key)
+        if value is None:
+            missing_data.append(key)
+            continue
         if isinstance(value, bool):
             contribution = weight if value else 0.0
         else:
+            if not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+                raise ValueError(f"Risk input '{key}' must be finite and non-negative")
             contribution = float(value) * weight
-        if contribution:
-            score += contribution
-            factors.append(
-                {"factor": key, "value": value, "weight": weight, "score": round(contribution, 2)}
-            )
+        score += contribution
+        factors.append(
+            {"factor": key, "value": value, "weight": weight, "score": round(contribution, 2)}
+        )
 
     score = min(100.0, round(score, 2))
-    classification = (
+    risk_level = (
         "low" if score < 25 else "medium" if score < 50 else "high" if score < 75 else "critical"
     )
+    classification = "insufficient_data" if missing_data else risk_level
     actions: list[str] = []
     if values.get("pipeline_failures", 0):
         actions.append("Investigate and resolve recent pipeline failures")
@@ -46,6 +61,9 @@ def calculate_risk(
     return {
         "score": score,
         "classification": classification,
+        "risk_level": risk_level,
+        "data_completeness": "complete" if not missing_data else "incomplete",
+        "missing_data": missing_data,
         "factors": factors,
         "recommended_actions": actions,
     }

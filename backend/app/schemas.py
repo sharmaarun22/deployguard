@@ -10,6 +10,7 @@ class PipelineAnalyzeRequest(BaseModel):
 class PipelineExecutionRequest(BaseModel):
     pipeline_id: int
     status: str = Field(pattern="^(success|failure|cancelled|unknown)$")
+    external_id: str | None = Field(default=None, min_length=1, max_length=200)
     log_text: str = Field(default="", max_length=500_000)
 
 
@@ -24,12 +25,12 @@ class InfrastructureAnalyzeRequest(BaseModel):
 
 
 class DeploymentRiskRequest(BaseModel):
-    pipeline_failures: int = Field(default=0, ge=0)
-    failed_tests: int = Field(default=0, ge=0)
-    flaky_tests: int = Field(default=0, ge=0)
-    infrastructure_findings: int = Field(default=0, ge=0)
-    missing_validation: bool = False
-    previous_deployment_failures: int = Field(default=0, ge=0)
+    pipeline_failures: int | None = Field(default=None, ge=0)
+    failed_tests: int | None = Field(default=None, ge=0)
+    flaky_tests: int | None = Field(default=None, ge=0)
+    infrastructure_findings: int | None = Field(default=None, ge=0)
+    missing_validation: bool | None = None
+    previous_deployment_failures: int | None = Field(default=None, ge=0)
     weights: dict[str, float] | None = None
 
 

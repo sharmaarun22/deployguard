@@ -39,12 +39,26 @@ def test_parse_robot() -> None:
 
 def test_flaky_requires_mixed_historical_results() -> None:
     records = [
-        {"test_name": "flaky", "status": "passed"},
-        {"test_name": "flaky", "status": "failed"},
-        {"test_name": "flaky", "status": "passed"},
-        {"test_name": "stable", "status": "passed"},
-        {"test_name": "stable", "status": "passed"},
-        {"test_name": "stable", "status": "passed"},
+        {"suite": "checkout", "test_name": "flaky", "status": "passed"},
+        {"suite": "checkout", "test_name": "flaky", "status": "failed"},
+        {"suite": "checkout", "test_name": "flaky", "status": "passed"},
+        {"suite": "catalog", "test_name": "flaky", "status": "passed"},
+        {"suite": "catalog", "test_name": "flaky", "status": "passed"},
+        {"suite": "catalog", "test_name": "flaky", "status": "passed"},
+        {"suite": "checkout", "test_name": "skipped-heavy", "status": "passed"},
+        {"suite": "checkout", "test_name": "skipped-heavy", "status": "failed"},
+        {"suite": "checkout", "test_name": "skipped-heavy", "status": "skipped"},
+        {"suite": "checkout", "test_name": "skipped-heavy", "status": "skipped"},
     ]
     result = flaky_scores(records)
-    assert [item["test_name"] for item in result] == ["flaky"]
+    assert [(item["suite"], item["test_name"]) for item in result] == [("checkout", "flaky")]
+    assert result[0]["runs"] == 3
+    assert result[0]["failure_rate"] == pytest.approx(1 / 3, abs=0.001)
+
+
+@pytest.mark.parametrize("duration", ["NaN", "inf", "-0.1"])
+def test_junit_rejects_non_finite_or_negative_duration(duration: str) -> None:
+    with pytest.raises(ValueError, match="duration"):
+        parse_junit_xml(
+            f'<testsuite><testcase name="bad" time="{duration}"/></testsuite>'
+        )

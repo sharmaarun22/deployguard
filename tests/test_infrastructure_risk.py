@@ -29,8 +29,62 @@ def test_plan_reports_deletion() -> None:
     assert findings[0]["rule"] == "plan-resource-deletion"
 
 
+def test_plan_reports_replacement_missing_tags_and_sensitive_changes() -> None:
+    findings = analyze_plan(
+        """
+        {"resource_changes":[{"address":"aws_instance.app","change":{
+          "actions":["delete","create"],"after":{"tags":{}},
+          "after_sensitive":{"password":true}
+        }}]}
+        """
+    )
+    assert {item["rule"] for item in findings} == {
+        "plan-resource-replacement",
+        "plan-missing-tags",
+        "plan-sensitive-change",
+    }
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        ('{"resource_changes":{}}', "resource_changes must be an array"),
+        (
+            '{"resource_changes":[{"address":"aws_instance.app","change":{"actions":"delete"}}]}',
+            "actions must be an array",
+        ),
+    ],
+)
+def test_rejects_malformed_plan_shapes(content: str, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        analyze_plan(content)
+
+
 def test_risk_is_deterministic_and_bounded() -> None:
     first = calculate_risk({"pipeline_failures": 2, "failed_tests": 3, "missing_validation": True})
     second = calculate_risk({"pipeline_failures": 2, "failed_tests": 3, "missing_validation": True})
     assert first == second
     assert first["score"] <= 100
+
+
+def test_risk_distinguishes_missing_evidence_from_measured_zero() -> None:
+    incomplete = calculate_risk({})
+    complete = calculate_risk(
+        {
+            "pipeline_failures": 0,
+            "failed_tests": 0,
+            "flaky_tests": 0,
+            "infrastructure_findings": 0,
+            "missing_validation": False,
+            "previous_deployment_failures": 0,
+        }
+    )
+    assert incomplete["classification"] == "insufficient_data"
+    assert incomplete["missing_data"]
+    assert complete["classification"] == "low"
+    assert complete["missing_data"] == []
+
+
+def test_rejects_invalid_risk_weights() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        calculate_risk({"pipeline_failures": 1}, {"pipeline_failures": -1})

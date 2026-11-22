@@ -6,15 +6,17 @@ from xml.etree import ElementTree
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.auth import require_api_key
-from backend.app.db import Base, engine, get_db
+from backend.app.db import get_db
 from backend.app.models import (
     InfrastructureFinding,
     Notification,
     NotificationRule,
     Pipeline,
+    PipelineExecution,
     TestExecution,
 )
 from backend.app.schemas import (
@@ -43,11 +45,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def startup() -> None:
-    Base.metadata.create_all(bind=engine)
 
 
 @app.get("/health")
@@ -98,21 +95,102 @@ def record_execution(
     pipeline = db.get(Pipeline, payload.pipeline_id)
     if pipeline is None:
         raise HTTPException(status_code=404, detail="Pipeline not found")
-    pipeline.status = payload.status
+
+    if payload.external_id:
+        existing = (
+            db.query(PipelineExecution)
+            .filter_by(pipeline_id=pipeline.id, external_id=payload.external_id)
+            .first()
+        )
+        if existing is not None:
+            return {
+                "execution_id": existing.id,
+                "pipeline_id": pipeline.id,
+                "status": existing.status,
+                "classification": (
+                    json.loads(existing.classification) if existing.classification else None
+                ),
+                "duplicate": True,
+            }
+
     classification = (
         classify_failure(payload.log_text)
         if payload.status == "failure"
-        else {
-            "category": "none",
-            "confidence": 1.0,
-            "evidence": [],
-            "investigation": [],
-        }
+        else None
     )
-    pipeline.findings = json.dumps([classification])
-    db.commit()
-    db.refresh(pipeline)
-    return {"pipeline_id": pipeline.id, "status": pipeline.status, "classification": classification}
+    execution = PipelineExecution(
+        pipeline_id=pipeline.id,
+        external_id=payload.external_id,
+        status=payload.status,
+        classification=json.dumps(classification) if classification is not None else None,
+    )
+    pipeline.status = payload.status
+    db.add(execution)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        if payload.external_id:
+            existing = (
+                db.query(PipelineExecution)
+                .filter_by(pipeline_id=pipeline.id, external_id=payload.external_id)
+                .first()
+            )
+            if existing is not None:
+                return {
+                    "execution_id": existing.id,
+                    "pipeline_id": pipeline.id,
+                    "status": existing.status,
+                    "classification": (
+                        json.loads(existing.classification) if existing.classification else None
+                    ),
+                    "duplicate": True,
+                }
+        raise
+    db.refresh(execution)
+    return {
+        "execution_id": execution.id,
+        "pipeline_id": pipeline.id,
+        "status": execution.status,
+        "classification": classification,
+        "duplicate": False,
+    }
+
+
+@app.get("/api/pipelines/{pipeline_id}/executions")
+def list_pipeline_executions(
+    pipeline_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> dict[str, object]:
+    if db.get(Pipeline, pipeline_id) is None:
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+    query = db.query(PipelineExecution).filter_by(pipeline_id=pipeline_id)
+    total = query.count()
+    executions = (
+        query.order_by(PipelineExecution.created_at.desc(), PipelineExecution.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
+    return {
+        "items": [
+            {
+                "id": item.id,
+                "external_id": item.external_id,
+                "status": item.status,
+                "classification": (
+                    json.loads(item.classification) if item.classification else None
+                ),
+                "created_at": item.created_at,
+            }
+            for item in executions
+        ],
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+    }
 
 
 @app.get("/api/pipelines")
@@ -181,7 +259,12 @@ def test_analytics(
 ) -> dict[str, object]:
     records = db.query(TestExecution).all()
     serializable = [
-        {"test_name": item.test_name, "status": item.status, "duration_ms": item.duration_ms}
+        {
+            "suite": item.suite,
+            "test_name": item.test_name,
+            "status": item.status,
+            "duration_ms": item.duration_ms,
+        }
         for item in records
     ]
     flaky = flaky_scores(serializable)
@@ -215,16 +298,20 @@ def analyze_infrastructure(
         db.add(
             InfrastructureFinding(
                 source_type=payload.source_type,
-                resource="terraform",
-                rule=finding["rule"],
-                severity=finding["severity"],
-                description=finding["description"],
+                resource=str(finding["resource"]),
+                rule=str(finding["rule"]),
+                severity=str(finding["severity"]),
+                description=str(finding["description"]),
             )
         )
     db.commit()
     return {
         "source_type": payload.source_type,
-        "analysis_scope": "static local configuration",
+        "analysis_scope": (
+            "static local configuration"
+            if payload.source_type == "terraform"
+            else "planned Terraform changes"
+        ),
         "findings": findings,
     }
 
@@ -232,7 +319,10 @@ def analyze_infrastructure(
 @app.post("/api/deployments/risk")
 def deployment_risk(payload: DeploymentRiskRequest) -> dict[str, object]:
     values = payload.model_dump(exclude={"weights"})
-    return calculate_risk(values, payload.weights)
+    try:
+        return calculate_risk(values, payload.weights)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.post("/api/notifications/rules")
@@ -301,7 +391,12 @@ def dashboard(
     failed_pipelines = sum(item.status == "failure" for item in pipelines)
     failed_tests = sum(item.status == "failed" for item in tests)
     test_records = [
-        {"test_name": item.test_name, "status": item.status, "duration_ms": item.duration_ms}
+        {
+            "suite": item.suite,
+            "test_name": item.test_name,
+            "status": item.status,
+            "duration_ms": item.duration_ms,
+        }
         for item in tests
     ]
     return {
