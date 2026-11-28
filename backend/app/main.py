@@ -175,7 +175,7 @@ def list_pipeline_executions(
         .all()
     )
     return {
-        "items": [
+        "results": [
             {
                 "id": item.id,
                 "external_id": item.external_id,
@@ -196,13 +196,13 @@ def list_pipeline_executions(
 @app.get("/api/pipelines")
 def list_pipelines(
     db: Annotated[Session, Depends(get_db)],
-    page: Annotated[int, Query(ge=1)] = 1,
-    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict[str, object]:
     total = db.query(func.count(Pipeline.id)).scalar() or 0
-    pipelines = db.query(Pipeline).offset((page - 1) * page_size).limit(page_size).all()
+    pipelines = db.query(Pipeline).offset(offset).limit(limit).all()
     return {
-        "items": [
+        "data": [
             {
                 "id": item.id,
                 "name": item.name,
@@ -212,8 +212,8 @@ def list_pipelines(
             }
             for item in pipelines
         ],
-        "page": page,
-        "page_size": page_size,
+        "page": (offset // limit) + 1,
+        "page_size": limit,
         "total": total,
     }
 
