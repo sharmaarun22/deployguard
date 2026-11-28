@@ -63,12 +63,13 @@ def test_pipeline_analysis_execution_and_pagination(client: TestClient) -> None:
     assert next_execution.status_code == 200
     history = client.get(f"/api/pipelines/{pipeline_id}/executions")
     assert history.json()["total"] == 2
+    assert len(history.json()["results"]) == 2
 
-    listing = client.get("/api/pipelines?page=1&page_size=1")
+    listing = client.get("/api/pipelines?limit=1&offset=0")
     assert listing.status_code == 200
     assert listing.json()["total"] == 1
-    assert listing.json()["items"][0]["id"] == pipeline_id
-    assert listing.json()["items"][0]["status"] == "success"
+    assert listing.json()["data"][0]["id"] == pipeline_id
+    assert listing.json()["data"][0]["status"] == "success"
 
 
 def test_invalid_pipeline_and_unknown_execution_errors(client: TestClient) -> None:
@@ -104,7 +105,7 @@ jobs:
         "/api/pipelines/executions",
         json={"pipeline_id": analyzed.json()["id"], "status": "failure"},
     )
-    stored = client.get("/api/pipelines").json()["items"][0]
+    stored = client.get("/api/pipelines").json()["data"][0]
     assert any(item["rule"] == "unsafe-shell-pipe" for item in stored["findings"])
 
 
@@ -170,4 +171,6 @@ def test_api_key_protects_notification_rule_mutations(client: TestClient, monkey
     )
     assert created.status_code == 200
     assert created.json()["enabled"] is True
-    assert client.get("/api/notifications").json()["total"] == 0
+    notifications = client.get("/api/notifications?page=1&page_size=20")
+    assert notifications.json()["total"] == 0
+    assert notifications.json()["items"] == []

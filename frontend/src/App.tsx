@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import NotificationList from './NotificationList'
+import PipelineList from './PipelineList'
 
 type Dashboard = {
   pipeline_health: { total: number; failed: number; successful: number }
@@ -90,19 +92,23 @@ function App() {
               )}
             </article>
 
-            <article className="panel">
-              <h2>Flaky tests</h2>
-              {dashboard.test_reliability.flaky_tests.length === 0 ? (
-                <p className="empty">No flaky tests detected.</p>
-              ) : (
-                dashboard.test_reliability.flaky_tests.map((test) => (
-                  <div className="row" key={`${test.suite ?? ''}:${test.test_name}`}>
-                    <span>{test.test_name}</span>
-                    <b>{Math.round(test.pass_rate * 100)}% pass</b>
-                  </div>
-                ))
-              )}
-            </article>
+            <div>
+              <article className="panel">
+                <h2>Flaky tests</h2>
+                {dashboard.test_reliability.flaky_tests.length === 0 ? (
+                  <p className="empty">No flaky tests detected.</p>
+                ) : (
+                  dashboard.test_reliability.flaky_tests.map((test) => (
+                    <div className="row" key={`${test.suite ?? ''}:${test.test_name}`}>
+                      <span>{test.test_name}</span>
+                      <b>{Math.round(test.pass_rate * 100)}% pass</b>
+                    </div>
+                  ))
+                )}
+              </article>
+            </div>
+            <PipelineList />
+            <NotificationList />
           </section>
         </>
       )}
